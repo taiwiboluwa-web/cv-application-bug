@@ -1,0 +1,36 @@
+# Tests
+
+## Test 1 - Upload CV text and extract a candidate profile [sanity]
+Viewport: desktop
+Covers: CV onboarding, candidate AI extraction, candidate_profiles persistence
+Description: Verifies the primary onboarding flow accepts CV text and reports a successful structured profile extraction.
+Steps:
+1. Paste a deterministic CV containing a name, skills, one role, one education entry, and one portfolio URL into the CV field
+2. Select "Extract profile"
+3. Wait for the success message
+Expected: A visible success message says the profile was extracted and saved.
+
+## Test 2 - Reject an empty CV
+Viewport: mobile
+Covers: CV required validation, invalid-write guardrail
+Description: Verifies extraction does not run when the CV field is empty.
+Steps:
+1. Leave the CV field empty
+2. Select "Extract profile"
+Expected: A visible message asks the user to add CV text first and no profile is created.
+
+## Test 3 - Review a recommended job without submitting
+Viewport: desktop
+Covers: job match display, application review control, no-automatic-submission guardrail
+Description: Verifies recommended roles expose match scores and review does not submit an application.
+Steps:
+1. Select "Review" on a recommended role
+Expected: The interface indicates the application workspace opened and no application is marked submitted.
+
+## Test 4 - Keep email disconnected until explicitly connected
+Viewport: mobile
+Covers: email connection state, explicit approval boundary
+Description: Verifies the email operator starts disconnected and does not imply mailbox access.
+Steps:
+1. Scroll to the Email Operator section
+Expected: The interface says the email is not connected and states sending stays behind explicit approval.
