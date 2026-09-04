@@ -1,26 +1,106 @@
-'use client';
-import { useState } from 'react';
-
-const demoJobs = [
-  { id: '1', company: 'Polygon Labs', title: 'Content & Social Lead', location: 'Remote', score: 94 },
-  { id: '2', company: 'Consensys', title: 'Community Manager', location: 'Remote', score: 88 },
-  { id: '3', company: 'Coinbase', title: 'Content Strategist', location: 'Remote', score: 86 },
-];
+import { useEffect, useState } from 'react';
+import { getSession, signIn, signOut, useSession } from 'next-auth/react';
 
 export default function Home() {
+  const { data: session, status } = useSession();
   const [cv, setCv] = useState('');
   const [message, setMessage] = useState('');
+  const [searching, setSearching] = useState(false);
+  const [matches, setMatches] = useState<Array<{ id: string; title: string; application_url: string; score: number }>>([]);
+
+  useEffect(() => {
+    if (session?.user?.email) setMessage('Signed in. Upload your CV to initialize your candidate profile.');
+  }, [session]);
+
   const extract = async () => {
-    if (!cv.trim()) { setMessage('Add your CV text first.'); return; }
-    setMessage('Extracting profile…');
-    try {
-      const response = await fetch('/api/candidate/extract', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: cv }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Could not extract the CV.');
-      setMessage(data.message || 'Profile extracted and saved.');
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'Could not extract the CV. Please retry.'); }
+    if (!cv.trim()) return setMessage('Add your CV text first.');
+    setMessage('Building your candidate profile…');
+    const response = await fetch('/api/candidate/profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: cv }),
+    });
+    const data = await response.json();
+    setMessage(response.ok ? 'Candidate profile saved to Neon.' : (data.error || 'Could not save the profile.'));
   };
-  return <main className="shell"><aside className="sidebar"><div className="brand"><span className="brand-mark">AJ</span><div><strong>AI Job Agent</strong><small>Personal career operator</small></div></div><nav><a className="active">Command Center</a><a>Candidate Profile</a><a>Jobs</a><a>Applications</a><a>Email</a><a>Agent Settings</a></nav><div className="agent-card"><span className="pulse"/>Agent ready<strong>Review mode</strong><small>No applications are submitted without approval.</small></div></aside><section className="content"><header className="topbar"><div><span className="eyebrow">JOB HUNT / CONTROL ROOM</span><h1>Put your job search on autopilot.</h1><p>One CV in. Matching, applications and recruiter outreach organized in one place.</p></div><button className="primary" onClick={()=>document.getElementById('cv')?.scrollIntoView({behavior:'smooth'})}>Upload CV</button></header><section className="stats"><div><span>Jobs matched</span><strong>3</strong><small>Demo recommendations</small></div><div><span>Applications</span><strong>0</strong><small>Nothing submitted yet</small></div><div><span>Interviews</span><strong>0</strong><small>Tracked automatically</small></div><div><span>Agent status</span><strong className="live">READY</strong><small>Review mode enabled</small></div></section><div className="grid"><section className="panel cv" id="cv"><div className="panel-head"><div><span className="eyebrow">01 / CANDIDATE PROFILE</span><h2>Start with your CV</h2></div><span className="tag">AI extraction</span></div><p className="muted">Paste your CV text. The AI turns it into a structured candidate profile without inventing facts.</p><textarea value={cv} onChange={e=>setCv(e.target.value)} placeholder="Paste your CV here…" rows={10}/><div className="row"><label className="file"><input type="file" accept=".txt,.md,text/plain" onChange={async e=>{const f=e.target.files?.[0];if(f)setCv(await f.text())}}/>Choose CV file</label><button className="primary" onClick={extract}>Extract profile</button></div>{message&&<p className="notice">{message}</p>}</section><section className="panel"><div className="panel-head"><div><span className="eyebrow">02 / MATCH ENGINE</span><h2>Recommended roles</h2></div><span className="tag">Live scoring</span></div><div className="jobs">{demoJobs.map(j=><article className="job" key={j.id}><div className="job-score">{j.score}%<small>match</small></div><div><strong>{j.title}</strong><span>{j.company} · {j.location}</span></div><button onClick={()=>setMessage('Application workspace opened. Submission is still disabled in review mode.')} className="ghost">Review</button></article>)}</div></section></div><section className="panel pipeline"><div className="panel-head"><div><span className="eyebrow">03 / APPLICATION PIPELINE</span><h2>Applications</h2></div><button className="ghost" onClick={()=>setMessage('Application tracker opened.')}>Open tracker</button></div><div className="pipeline-grid"><div><span>Draft</span><strong>0</strong></div><div><span>Ready for review</span><strong>0</strong></div><div><span>Applied</span><strong>0</strong></div><div><span>Interview</span><strong>0</strong></div><div><span>Offer</span><strong>0</strong></div></div></section><section className="panel email"><div><div><span className="eyebrow">04 / EMAIL OPERATOR</span><h2>Your email, under your control.</h2><p className="muted">Connect a mailbox later to send recruiter outreach and application emails. Sending stays behind explicit approval.</p></div><div className="email-state"><span>●</span> Not connected</div></div><button className="secondary" onClick={()=>setMessage('Email connection setup will be added with OAuth and encrypted secrets.')}>Connect email</button></section></section></main>;
+
+  const discover = async () => {
+    setSearching(true);
+    setMessage('Searching the web for jobs matched to your profile…');
+    try {
+      const response = await fetch('/api/jobs/discover', { method: 'POST' });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Job discovery failed.');
+      setMatches(data.matches ?? []);
+      setMessage(`Discovered ${data.discovered ?? 0} jobs and scored the matches.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Job discovery failed.');
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  if (status === 'loading') return <main className="shell"><section className="content"><p>Loading your session…</p></section></main>;
+
+  if (!session) {
+    return (
+      <main className="landing">
+        <div className="landing-inner">
+          <span className="eyebrow">AUTONOMOUS JOB OPERATOR</span>
+          <h1>Your CV goes in.<br />Your job hunt keeps moving.</h1>
+          <p>Connect with Google, upload your CV once, and let the agent discover relevant opportunities, score them against your real experience, prepare applications, and track the entire pipeline.</p>
+          <button className="primary google" onClick={() => signIn('google')}>Continue with Google</button>
+          <small>Nothing is invented about your background. Secure steps such as CAPTCHA or MFA remain interactive.</small>
+        </div>
+      </main>
+    );
+  }
+
+  return (
+    <main className="shell">
+      <aside className="sidebar">
+        <div className="brand"><span className="brand-mark">AJ</span><div><strong>AI Job Agent</strong><small>Personal career operator</small></div></div>
+        <nav><a className="active">Command Center</a><a>Candidate Profile</a><a>Jobs</a><a>Applications</a><a>Email</a><a>Agent Settings</a></nav>
+        <div className="agent-card"><span className="pulse" />Agent online<strong>Discovery ready</strong><small>{session.user.email}</small></div>
+        <button className="ghost signout" onClick={() => signOut()}>Sign out</button>
+      </aside>
+      <section className="content">
+        <header className="topbar">
+          <div><span className="eyebrow">JOB HUNT / CONTROL ROOM</span><h1>Put your job search on autopilot.</h1><p>Upload once. Discover, match, prepare and track without repeatedly prompting the agent.</p></div>
+          <button className="primary" onClick={discover} disabled={searching}>{searching ? 'Searching…' : 'Find matching jobs'}</button>
+        </header>
+
+        <section className="stats">
+          <div><span>Jobs matched</span><strong>{matches.length}</strong><small>From your latest search</small></div>
+          <div><span>Applications</span><strong>0</strong><small>Submission worker next</small></div>
+          <div><span>Interviews</span><strong>0</strong><small>Tracked automatically</small></div>
+          <div><span>Agent status</span><strong className="live">ONLINE</strong><small>Awaiting your profile</small></div>
+        </section>
+
+        <div className="grid">
+          <section className="panel cv" id="cv">
+            <div className="panel-head"><div><span className="eyebrow">01 / CANDIDATE PROFILE</span><h2>Upload your CV</h2></div><span className="tag">Neon profile</span></div>
+            <p className="muted">Paste extracted CV text for now. PDF/DOCX upload parsing is the next ingestion layer; the stored profile is always grounded in the source CV.</p>
+            <textarea value={cv} onChange={e => setCv(e.target.value)} placeholder="Paste your CV here…" rows={12} />
+            <div className="row"><button className="primary" onClick={extract}>Save candidate profile</button></div>
+            {message && <p className="notice">{message}</p>}
+          </section>
+
+          <section className="panel">
+            <div className="panel-head"><div><span className="eyebrow">02 / MATCH ENGINE</span><h2>Recommended roles</h2></div><span className="tag">Web discovery</span></div>
+            {matches.length === 0 ? <div className="empty"><strong>No jobs loaded.</strong><span>Save your CV, then run the job hunter.</span></div> : <div className="jobs">{matches.map(job => <article className="job" key={job.id}><div className="job-score">{job.score}%<small>match</small></div><div><strong>{job.title}</strong><span>Discovered on the web</span></div><a className="ghost" href={job.application_url} target="_blank" rel="noreferrer">Open</a></article>)}</div>}
+          </section>
+        </div>
+
+        <section className="panel pipeline"><div className="panel-head"><div><span className="eyebrow">03 / APPLICATION PIPELINE</span><h2>Applications</h2></div></div><div className="pipeline-grid"><div><span>Draft</span><strong>0</strong></div><div><span>Ready</span><strong>0</strong></div><div><span>Applied</span><strong>0</strong></div><div><span>Interview</span><strong>0</strong></div><div><span>Offer</span><strong>0</strong></div></div></section>
+
+        <section className="panel email"><div><div><span className="eyebrow">04 / EMAIL OPERATOR</span><h2>Gmail operator</h2><p className="muted">Your Google sign-in is separate from Gmail sending. A dedicated Gmail OAuth permission will be added before the agent can send application or recruiter emails.</p></div><div className="email-state"><span>●</span> Not connected for sending</div></div></section>
+      </section>
+    </main>
+  );
+}
+
+export async function getServerSideProps(context: any) {
+  const session = await getSession(context);
+  return { props: { session: session ?? null } };
 }
